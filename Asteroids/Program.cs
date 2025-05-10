@@ -8,140 +8,247 @@ namespace Asteroids
     {
         public static int screenWidth = 800;
         public static int screenHeight = 600;
+        public static bool isGameOver = false; // Tracks game state
+
+        public static Texture2D playerTexture;
+        public static Texture2D asteroidTexture;
+        public static Texture2D bulletTexture;
+        public static Texture2D enemyTexture;
+        public static Texture2D enemyBulletTexture;
+        public static Texture2D backgroundTexture;
         public static Vector2 gravity = new Vector2(0, 0.1f);
+
+        public static int level = 1; // New: Track the current level
+        public static Random random = new Random();
 
         static void Main(string[] args)
         {
-            Raylib.InitWindow(screenWidth, screenHeight, "Asteroids Game");
+            Raylib.InitWindow(screenWidth, screenHeight, "Asteroids");
             Raylib.SetTargetFPS(60);
 
-            Player player = new Player(screenWidth / 2, screenHeight / 2);
-            Asteroid[] asteroids = new Asteroid[10];
-            for (int i = 0; i < asteroids.Length; i++)
-            {
-                asteroids[i] = new Asteroid();
-            }
+            // Load textures once
+            LoadTextures();
+
+            Player player = new Player(screenWidth / 2, screenHeight / 2, playerTexture);
+            List<Asteroid> asteroids = CreateAsteroids(5, asteroidTexture, player.Position, 150);
+            List<Bullet> bullets = new List<Bullet>();
+            List<Bullet> enemyBullets = new List<Bullet>();
+            Enemy enemy = new Enemy(enemyTexture, enemyBulletTexture, new Vector2(100, 100)); // Enemy spaceship
+
 
             while (!Raylib.WindowShouldClose())
             {
-                player.Update();
-                foreach (var asteroid in asteroids)
+                if (!isGameOver)
                 {
-                    asteroid.Update();
+                    // Update entities
+                    player.Update();
+                    enemy.Update(enemyBullets);
+
+                    foreach (var bullet in bullets) bullet.Update();
+                    foreach (var enemyBullet in enemyBullets) enemyBullet.Update();
+
+                    bullets.RemoveAll(b => !b.IsOnScreen() || b.IsExpired());
+                    enemyBullets.RemoveAll(b => !b.IsOnScreen() || b.IsExpired());
+
+                    foreach (var asteroid in asteroids) asteroid.Update();
+
+                    // Check collisions
+                    CheckPlayerCollisions(player, asteroids, enemyBullets);
+                    CheckBulletCollisions(bullets, asteroids, enemy);
+
+                    // Check if level is complete
+                    if (asteroids.Count == 0 && enemy.IsDestroyed)
+                    {
+                        level++; // Increase the level
+                        StartNextLevel(ref player, ref asteroids, ref bullets, ref enemyBullets, ref enemy);
+                    }
+
+                    // Shoot bullets
+                    if (Raylib.IsKeyDown(KeyboardKey.Space)) player.Shoot(bullets, bulletTexture);
+                }
+                else
+                {
+                    if (Raylib.IsKeyPressed(KeyboardKey.R))
+                        RestartGame(ref player, ref asteroids, ref bullets, ref enemyBullets, ref enemy);
                 }
 
+                // Render everything
                 Raylib.BeginDrawing();
                 Raylib.ClearBackground(Color.Black);
 
-                player.Draw();
-                foreach (var asteroid in asteroids)
+                Raylib.DrawTexturePro(
+                    backgroundTexture,
+                    new Rectangle(0, 0, backgroundTexture.Width, backgroundTexture.Height), // Full image
+                    new Rectangle(0, 0, Program.screenWidth, Program.screenHeight), // Scale to screen size
+                    new Vector2(0, 0), // Origin (top-left corner)
+                    0, // No rotation
+                    Color.White // Keep original colors
+                );
+
+
+                if (!isGameOver)
                 {
-                    asteroid.Draw();
+                    player.Draw();
+                    enemy.Draw();
+                    foreach (var bullet in bullets) bullet.Draw();
+                    foreach (var enemyBullet in enemyBullets) enemyBullet.Draw();
+                    foreach (var asteroid in asteroids) asteroid.Draw();
+
+                    // Display the current level
+                    Raylib.DrawText($"Level: {level}", 10, 10, 20, Color.White);
+                }
+                else
+                {
+                    Raylib.DrawText("Game Over!", screenWidth / 2 - 100, screenHeight / 2 - 50, 40, Color.Red);
+                    Raylib.DrawText("Press 'R' to Restart", screenWidth / 2 - 150, screenHeight / 2, 30, Color.White);
                 }
 
                 Raylib.EndDrawing();
             }
 
+            UnloadTextures();
             Raylib.CloseWindow();
         }
-    }
 
-    class Player
-    {
-        public Vector2 Position;
-        public Vector2 Velocity;
-        public float Speed;
-
-        public Player(float x, float y)
+        static void LoadTextures()
         {
-            Position = new Vector2(x, y);
-            Velocity = new Vector2(0, 0);
-            Speed = 5.0f;
+            // Preload textures
+            playerTexture = Raylib.LoadTexture("Images/player.png");
+            asteroidTexture = Raylib.LoadTexture("Images/asteroid.png");
+            bulletTexture = Raylib.LoadTexture("Images/bullet.png");
+            enemyTexture = Raylib.LoadTexture("Images/enemy.png");
+            enemyBulletTexture = Raylib.LoadTexture("Images/enemybullet.png");
+            backgroundTexture = Raylib.LoadTexture("Images/background.png");
+
         }
 
-        public void Update()
+        static void UnloadTextures()
         {
-            if (Raylib.IsKeyDown(KeyboardKey.W))
+            // Unload all textures
+            Raylib.UnloadTexture(playerTexture);
+            Raylib.UnloadTexture(asteroidTexture);
+            Raylib.UnloadTexture(bulletTexture);
+            Raylib.UnloadTexture(enemyTexture);
+            Raylib.UnloadTexture(enemyBulletTexture);
+            Raylib.UnloadTexture(backgroundTexture);
+        }
+
+        static List<Asteroid> CreateAsteroids(int count, Texture2D texture, Vector2 playerPosition, float safeZoneRadius)
+        {
+            List<Asteroid> asteroids = new List<Asteroid>();
+            Random random = new Random();
+
+            for (int i = 0; i < count; i++)
             {
-                Velocity.Y = -Speed;
+                Vector2 position;
+                do
+                {
+                    position = new Vector2(random.Next(screenWidth), random.Next(screenHeight));
+                }
+                while (IsWithinSafeZone(position, playerPosition, safeZoneRadius));
+
+                Vector2 velocity = new Vector2((float)(random.NextDouble() * 2 - 1), (float)(random.NextDouble() * 2 - 1));
+                asteroids.Add(new Asteroid(texture, position, velocity, AsteroidSize.Large)); // Start with large asteroids
             }
-            else if (Raylib.IsKeyDown(KeyboardKey.S))
+
+            return asteroids;
+        }
+
+        static bool IsWithinSafeZone(Vector2 position, Vector2 playerPosition, float safeZoneRadius)
+        {
+            float dx = position.X - playerPosition.X;
+            float dy = position.Y - playerPosition.Y;
+            float distance = MathF.Sqrt(dx * dx + dy * dy);
+            return distance < safeZoneRadius;
+        }
+
+        static void SplitAsteroid(List<Asteroid> asteroids, Asteroid asteroid)
+        {
+            // Ensure the asteroid is valid before proceeding
+            if (asteroid == null) return;
+
+            // Check the size of the asteroid and split accordingly
+            if (asteroid.Size == AsteroidSize.Large)
             {
-                Velocity.Y = Speed;
+                // Create two medium asteroids
+                asteroids.Add(new Asteroid(asteroid.Texture, asteroid.Position, asteroid.Velocity * 0.8f, AsteroidSize.Medium));
+                asteroids.Add(new Asteroid(asteroid.Texture, asteroid.Position, asteroid.Velocity * -0.8f, AsteroidSize.Medium));
             }
-            else
+            else if (asteroid.Size == AsteroidSize.Medium)
             {
-                Velocity.Y = Program.gravity.Y;
+                // Create two small asteroids
+                asteroids.Add(new Asteroid(asteroid.Texture, asteroid.Position, asteroid.Velocity * 0.8f, AsteroidSize.Small));
+                asteroids.Add(new Asteroid(asteroid.Texture, asteroid.Position, asteroid.Velocity * -0.8f, AsteroidSize.Small));
             }
 
-            if (Raylib.IsKeyDown(KeyboardKey.A))
+            // Small asteroids do not split further
+        }
+
+
+        static void RestartGame(ref Player player, ref List<Asteroid> asteroids, ref List<Bullet> bullets, ref List<Bullet> enemyBullets, ref Enemy enemy)
+        {
+            isGameOver = false;
+            level = 1; // Reset the level
+
+            player = new Player(screenWidth / 2, screenHeight / 2, playerTexture);
+            asteroids = CreateAsteroids(5, asteroidTexture, player.Position, 150);
+            bullets.Clear();
+            enemyBullets.Clear();
+            enemy = new Enemy(enemyTexture, enemyBulletTexture, new Vector2(100, 100));
+        }
+
+        static void StartNextLevel(ref Player player, ref List<Asteroid> asteroids, ref List<Bullet> bullets, ref List<Bullet> enemyBullets, ref Enemy enemy)
+        {
+            player = new Player(screenWidth / 2, screenHeight / 2, playerTexture);
+            asteroids = CreateAsteroids(5 + level, asteroidTexture, player.Position, 150); // Increase asteroid count
+            bullets.Clear();
+            enemyBullets.Clear();
+            enemy = new Enemy(enemyTexture, enemyBulletTexture, new Vector2(100 + level * 10, 100 + level * 10)); // Slightly move the enemy
+        }
+
+        static void CheckPlayerCollisions(Player player, List<Asteroid> asteroids, List<Bullet> enemyBullets)
+        {
+            foreach (var asteroid in asteroids)
+                if (player.CollidesWith(asteroid)) { isGameOver = true; break; }
+
+            foreach (var enemyBullet in enemyBullets)
+                if (player.CollidesWith(enemyBullet)) { isGameOver = true; break; }
+        }
+
+        static void CheckBulletCollisions(List<Bullet> bullets, List<Asteroid> asteroids, Enemy enemy)
+        {
+            // Iterate over bullets in reverse to safely remove them
+            for (int i = bullets.Count - 1; i >= 0; i--)
             {
-                Velocity.X = -Speed;
+                bool bulletRemoved = false;
+
+                // Check collision with asteroids
+                for (int j = asteroids.Count - 1; j >= 0; j--)
+                {
+                    if (bullets[i].CollidesWith(asteroids[j]))
+                    {
+                        // Split the asteroid and remove both the bullet and asteroid
+                        SplitAsteroid(asteroids, asteroids[j]);
+                        asteroids.RemoveAt(j);
+                        bullets.RemoveAt(i);
+                        bulletRemoved = true;
+                        break; // Exit asteroid loop as the bullet is removed
+                    }
+                }
+
+                // If the bullet was removed, skip the enemy check
+                if (bulletRemoved) continue;
+
+                // Check collision with the enemy
+                if (!enemy.IsDestroyed && bullets[i].CollidesWith(enemy))
+                {
+                    enemy.Destroy(); // Destroy the enemy
+                    bullets.RemoveAt(i); // Remove the bullet
+                }
             }
-            else if (Raylib.IsKeyDown(KeyboardKey.D))
-            {
-                Velocity.X = Speed;
-            }
-            else
-            {
-                Velocity.X = 0;
-            }
-
-            Position.X += Velocity.X;
-            Position.Y += Velocity.Y;
-
-            WrapPosition();
-        }
-
-        public void Draw()
-        {
-            Raylib.DrawCircle((int)Position.X, (int)Position.Y, 10, Color.White);
-        }
-
-        private void WrapPosition()
-        {
-            if (Position.X < 0) Position.X = Program.screenWidth;
-            else if (Position.X > Program.screenWidth) Position.X = 0;
-
-            if (Position.Y < 0) Position.Y = Program.screenHeight;
-            else if (Position.Y > Program.screenHeight) Position.Y = 0;
-        }
-    }
-
-    class Asteroid
-    {
-        public Vector2 Position;
-        public Vector2 Velocity;
-        public float Radius;
-        private static Random random = new Random();
-
-        public Asteroid()
-        {
-            Position = new Vector2(random.Next(Program.screenWidth), random.Next(Program.screenHeight));
-            Velocity = new Vector2((float)(random.NextDouble() * 2 - 1), (float)(random.NextDouble() * 2 - 1));
-            Radius = 20;
-        }
-
-        public void Update()
-        {
-            Position.X += Velocity.X;
-            Position.Y += Velocity.Y;
-
-            WrapPosition();
-        }
-
-        public void Draw()
-        {
-            Raylib.DrawCircle((int)Position.X, (int)Position.Y, Radius, Color.Gray);
-        }
-
-        private void WrapPosition()
-        {
-            if (Position.X < 0) Position.X = Program.screenWidth;
-            else if (Position.X > Program.screenWidth) Position.X = 0;
-
-            if (Position.Y < 0) Position.Y = Program.screenHeight;
-            else if (Position.Y > Program.screenHeight) Position.Y = 0;
         }
     }
 }
+
+
+    
