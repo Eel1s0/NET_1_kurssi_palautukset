@@ -10,7 +10,8 @@ namespace Asteroids
         MainMenu,
         Playing,
         GameOver,
-        Settings
+        Settings,
+        Paused
     }
     class Program
     {
@@ -73,7 +74,13 @@ namespace Asteroids
 
                         if (menuResult == MainMenu.MenuResult.StartGame)
                         {
-                            // ... (start game logic)
+                            isGameOver = false;
+                            level = 1;
+                            player = new Player(screenWidth / 2, screenHeight / 2, playerTexture);
+                            asteroids = CreateAsteroids(5, asteroidTexture, player.Position, 150);
+                            bullets.Clear();
+                            enemyBullets.Clear();
+                            enemy = new Enemy(enemyTexture, enemyBulletTexture, new Vector2(100, 100));
                             currentState = GameState.Playing;
                         }
                         else if (menuResult == MainMenu.MenuResult.Settings)
@@ -90,9 +97,8 @@ namespace Asteroids
                         var settingsResult = settingsMenu.Update();
                         settingsMenu.Draw(screenWidth, screenHeight);
 
-                        // Apply settings to your game (example: adjust sound volume)
+                        // Apply sound volume setting globally
                         Raylib.SetMasterVolume(settingsMenu.SoundVolume);
-
 
                         if (settingsResult == SettingsMenu.SettingsResult.Back)
                         {
@@ -101,6 +107,12 @@ namespace Asteroids
                         break;
 
                     case GameState.Playing:
+                        // Pause logic
+                        if (Raylib.IsKeyPressed(KeyboardKey.P) || Raylib.IsKeyPressed(KeyboardKey.Escape))
+                        {
+                            currentState = GameState.Paused;
+                            break;
+                        }
                         if (!isGameOver)
                         {
                             // Update entities
@@ -143,6 +155,22 @@ namespace Asteroids
                             {
                                 currentState = GameState.GameOver;
                             }
+                        }
+                        break;
+
+                    case GameState.Paused:
+                        // Draw the paused overlay
+                        Raylib.DrawText("PAUSED", screenWidth / 2 - 80, screenHeight / 2 - 60, 50, Color.Yellow);
+                        Raylib.DrawText("Press 'P' to Resume", screenWidth / 2 - 180, screenHeight / 2, 30, Color.White);
+                        Raylib.DrawText("Press 'M' for Main Menu", screenWidth / 2 - 150, screenHeight / 2 + 40, 30, Color.White);
+
+                        if (Raylib.IsKeyPressed(KeyboardKey.P) || Raylib.IsKeyPressed(KeyboardKey.Escape))
+                        {
+                            currentState = GameState.Playing;
+                        }
+                        else if (Raylib.IsKeyPressed(KeyboardKey.M))
+                        {
+                            currentState = GameState.MainMenu;
                         }
                         break;
 
