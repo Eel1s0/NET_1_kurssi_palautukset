@@ -4,11 +4,21 @@ using Raylib_cs;
 
 namespace Asteroids
 {
+
+    enum GameState
+    {
+        MainMenu,
+        Playing,
+        GameOver,
+        Settings
+    }
     class Program
     {
+
         public static int screenWidth = 800;
         public static int screenHeight = 600;
         public static bool isGameOver = false; // Tracks game state
+
 
         public static Texture2D playerTexture;
         public static Texture2D asteroidTexture;
@@ -20,6 +30,10 @@ namespace Asteroids
 
         public static int level = 1; // New: Track the current level
         public static Random random = new Random();
+        public static GameState currentState = GameState.MainMenu;
+        public static MainMenu mainMenu = new MainMenu();
+        public static SettingsMenu settingsMenu = new SettingsMenu();
+
 
         static void Main(string[] args)
         {
@@ -38,69 +52,121 @@ namespace Asteroids
 
             while (!Raylib.WindowShouldClose())
             {
-                if (!isGameOver)
-                {
-                    // Update entities
-                    player.Update();
-                    enemy.Update(enemyBullets);
-
-                    foreach (var bullet in bullets) bullet.Update();
-                    foreach (var enemyBullet in enemyBullets) enemyBullet.Update();
-
-                    bullets.RemoveAll(b => !b.IsOnScreen() || b.IsExpired());
-                    enemyBullets.RemoveAll(b => !b.IsOnScreen() || b.IsExpired());
-
-                    foreach (var asteroid in asteroids) asteroid.Update();
-
-                    // Check collisions
-                    CheckPlayerCollisions(player, asteroids, enemyBullets);
-                    CheckBulletCollisions(bullets, asteroids, enemy);
-
-                    // Check if level is complete
-                    if (asteroids.Count == 0 && enemy.IsDestroyed)
-                    {
-                        level++; // Increase the level
-                        StartNextLevel(ref player, ref asteroids, ref bullets, ref enemyBullets, ref enemy);
-                    }
-
-                    // Shoot bullets
-                    if (Raylib.IsKeyDown(KeyboardKey.Space)) player.Shoot(bullets, bulletTexture);
-                }
-                else
-                {
-                    if (Raylib.IsKeyPressed(KeyboardKey.R))
-                        RestartGame(ref player, ref asteroids, ref bullets, ref enemyBullets, ref enemy);
-                }
-
-                // Render everything
                 Raylib.BeginDrawing();
                 Raylib.ClearBackground(Color.Black);
 
+                // Draw background
                 Raylib.DrawTexturePro(
                     backgroundTexture,
-                    new Rectangle(0, 0, backgroundTexture.Width, backgroundTexture.Height), // Full image
-                    new Rectangle(0, 0, Program.screenWidth, Program.screenHeight), // Scale to screen size
-                    new Vector2(0, 0), // Origin (top-left corner)
-                    0, // No rotation
-                    Color.White // Keep original colors
+                    new Rectangle(0, 0, backgroundTexture.Width, backgroundTexture.Height),
+                    new Rectangle(0, 0, screenWidth, screenHeight),
+                    new Vector2(0, 0),
+                    0,
+                    Color.White
                 );
 
-
-                if (!isGameOver)
+                switch (currentState)
                 {
-                    player.Draw();
-                    enemy.Draw();
-                    foreach (var bullet in bullets) bullet.Draw();
-                    foreach (var enemyBullet in enemyBullets) enemyBullet.Draw();
-                    foreach (var asteroid in asteroids) asteroid.Draw();
+                    case GameState.MainMenu:
+                        var menuResult = mainMenu.Update();
+                        mainMenu.Draw(screenWidth, screenHeight);
 
-                    // Display the current level
-                    Raylib.DrawText($"Level: {level}", 10, 10, 20, Color.White);
-                }
-                else
-                {
-                    Raylib.DrawText("Game Over!", screenWidth / 2 - 100, screenHeight / 2 - 50, 40, Color.Red);
-                    Raylib.DrawText("Press 'R' to Restart", screenWidth / 2 - 150, screenHeight / 2, 30, Color.White);
+                        if (menuResult == MainMenu.MenuResult.StartGame)
+                        {
+                            // ... (start game logic)
+                            currentState = GameState.Playing;
+                        }
+                        else if (menuResult == MainMenu.MenuResult.Settings)
+                        {
+                            currentState = GameState.Settings;
+                        }
+                        else if (menuResult == MainMenu.MenuResult.Exit)
+                        {
+                            Raylib.CloseWindow();
+                        }
+                        break;
+
+                    case GameState.Settings:
+                        var settingsResult = settingsMenu.Update();
+                        settingsMenu.Draw(screenWidth, screenHeight);
+
+                        // Apply settings to your game (example: adjust sound volume)
+                        Raylib.SetMasterVolume(settingsMenu.SoundVolume);
+
+
+                        if (settingsResult == SettingsMenu.SettingsResult.Back)
+                        {
+                            currentState = GameState.MainMenu;
+                        }
+                        break;
+
+                    case GameState.Playing:
+                        if (!isGameOver)
+                        {
+                            // Update entities
+                            player.Update();
+                            enemy.Update(enemyBullets);
+
+                            foreach (var bullet in bullets) bullet.Update();
+                            foreach (var enemyBullet in enemyBullets) enemyBullet.Update();
+
+                            bullets.RemoveAll(b => !b.IsOnScreen() || b.IsExpired());
+                            enemyBullets.RemoveAll(b => !b.IsOnScreen() || b.IsExpired());
+
+                            foreach (var asteroid in asteroids) asteroid.Update();
+
+                            // Check collisions
+                            CheckPlayerCollisions(player, asteroids, enemyBullets);
+                            CheckBulletCollisions(bullets, asteroids, enemy);
+
+                            // Check if level is complete
+                            if (asteroids.Count == 0 && enemy.IsDestroyed)
+                            {
+                                level++; // Increase the level
+                                StartNextLevel(ref player, ref asteroids, ref bullets, ref enemyBullets, ref enemy);
+                            }
+
+                            // Shoot bullets
+                            if (Raylib.IsKeyDown(KeyboardKey.Space)) player.Shoot(bullets, bulletTexture);
+
+                            // Draw game objects
+                            player.Draw();
+                            enemy.Draw();
+                            foreach (var bullet in bullets) bullet.Draw();
+                            foreach (var enemyBullet in enemyBullets) enemyBullet.Draw();
+                            foreach (var asteroid in asteroids) asteroid.Draw();
+
+                            // Display the current level
+                            Raylib.DrawText($"Level: {level}", 10, 10, 20, Color.White);
+
+                            if (isGameOver)
+                            {
+                                currentState = GameState.GameOver;
+                            }
+                        }
+                        break;
+
+                    case GameState.GameOver:
+                        Raylib.DrawText("Game Over!", screenWidth / 2 - 100, screenHeight / 2 - 50, 40, Color.Red);
+                        Raylib.DrawText("Press 'R' to Restart", screenWidth / 2 - 150, screenHeight / 2, 30, Color.White);
+                        Raylib.DrawText("Press 'M' for Main Menu", screenWidth / 2 - 150, screenHeight / 2 + 40, 30, Color.White);
+
+                        if (Raylib.IsKeyPressed(KeyboardKey.R))
+                        {
+                            isGameOver = false;
+                            level = 1;
+                            player = new Player(screenWidth / 2, screenHeight / 2, playerTexture);
+                            asteroids = CreateAsteroids(5, asteroidTexture, player.Position, 150);
+                            bullets.Clear();
+                            enemyBullets.Clear();
+                            enemy = new Enemy(enemyTexture, enemyBulletTexture, new Vector2(100, 100));
+                            currentState = GameState.Playing;
+                        }
+                        else if (Raylib.IsKeyPressed(KeyboardKey.M))
+                        {
+                            currentState = GameState.MainMenu;
+                        }
+                        break;
                 }
 
                 Raylib.EndDrawing();
