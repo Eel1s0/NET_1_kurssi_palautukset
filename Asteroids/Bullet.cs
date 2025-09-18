@@ -8,57 +8,48 @@ namespace Asteroids
     {
         public Vector2 Position;
         public Vector2 Velocity;
-        private Texture2D Texture; // The texture for the bullet
-        private float Speed = 10.0f;
-        private float Rotation; // Rotation angle based on direction
-        private float Lifespan = 2.0f; // New: Lifespan in seconds
+        private Texture2D Texture;
+        private float Speed = 500.0f; // pixels/s
+        private float Rotation; // degrees
+        private float Lifespan = 2.0f; // seconds
+        private float Age = 0.0f;
+
+        // Visual / collision scale exposed via GetRadius() (no hidden magic numbers in collision calls)
+        private float DrawScale = 0.25f;
 
         public Bullet(Vector2 position, Vector2 direction, Texture2D texture)
         {
             Position = position;
-            Velocity = Vector2.Normalize(direction) * Speed;
-            // Load the texture for the bullet
             Texture = texture;
-            // Calculate rotation angle based on direction
-            Rotation = MathF.Atan2(direction.Y, direction.X) * Raylib.RAD2DEG;
+            Vector2 dirNorm = Vector2.Normalize(direction);
+            Velocity = dirNorm * Speed;
+            Rotation = MathF.Atan2(dirNorm.Y, dirNorm.X) * Raylib.RAD2DEG;
         }
 
         public void Update()
         {
-            // Update the bullet's position
-            Position.X += Velocity.X;
-            Position.Y += Velocity.Y;
-
-            // Screen wrapping logic
-            if (Position.X > Program.screenWidth) Position.X = 0; // Wrap from right to left
-            else if (Position.X < 0) Position.X = Program.screenWidth; // Wrap from left to right
-
-            if (Position.Y > Program.screenHeight) Position.Y = 0; // Wrap from bottom to top
-            else if (Position.Y < 0) Position.Y = Program.screenHeight; // Wrap from top to bottom
-
-            Lifespan -= Raylib.GetFrameTime();
+            float dt = Raylib.GetFrameTime();
+            Position += Velocity * dt;
+            Age += dt;
         }
 
         public bool IsExpired()
         {
-            // Check if the bullet's lifespan has expired
-            return Lifespan <= 0;
+            return Age >= Lifespan;
         }
-
 
         public void Draw()
         {
-            // Scale factor for reducing bullet size
-            float scale = 0.5f;
+            Vector2 origin = new Vector2(Texture.Width / 2f, Texture.Height / 2f);
+            float scaledW = Texture.Width * DrawScale;
+            float scaledH = Texture.Height * DrawScale;
 
-            // Draw the bullet texture with rotation and scaling
-            Vector2 origin = new Vector2(Texture.Width / 2, Texture.Height / 2); // Center of the image
             Raylib.DrawTexturePro(
                 Texture,
-                new Rectangle(0, 0, Texture.Width, Texture.Height), // Source rectangle (full texture)
-                new Rectangle(Position.X, Position.Y, Texture.Width * scale, Texture.Height * scale), // Destination rectangle (scaled size)
-                origin, // Origin (rotation center)
-                Rotation + 90, // Add 90 degrees to the rotation
+                new Rectangle(0, 0, Texture.Width, Texture.Height),
+                new Rectangle(Position.X - scaledW / 2f, Position.Y - scaledH / 2f, scaledW, scaledH),
+                origin,
+                Rotation,
                 Color.White
             );
         }
@@ -68,20 +59,21 @@ namespace Asteroids
             return Position.X >= 0 && Position.X <= Program.screenWidth && Position.Y >= 0 && Position.Y <= Program.screenHeight;
         }
 
-        public bool CollidesWith(Enemy enemy)
+        // Expose radius explicitly so collisions use consistent, named scale instead of magic numbers
+        public float GetRadius()
         {
-            float dx = Position.X - enemy.Position.X;
-            float dy = Position.Y - enemy.Position.Y;
-            float distance = MathF.Sqrt(dx * dx + dy * dy);
-            return distance < enemy.Texture.Width * 0.3f; // Adjust collision radius as needed
+            return (Texture.Width * DrawScale) / 2f;
         }
 
         public bool CollidesWith(Asteroid asteroid)
         {
-            float dx = Position.X - asteroid.Position.X;
-            float dy = Position.Y - asteroid.Position.Y;
-            float distance = MathF.Sqrt(dx * dx + dy * dy);
-            return distance < asteroid.GetRadius(); // Adjust collision radius as needed
+            return Raylib.CheckCollisionCircles(Position, GetRadius(), asteroid.Position, asteroid.GetRadius());
+        }
+
+        public bool CollidesWith(Enemy enemy)
+        {
+            // Assume Enemy would also expose GetRadius() — use its collision helper if available
+            return Raylib.CheckCollisionCircles(Position, GetRadius(), enemy.Position, enemy.GetRadius());
         }
     }
 }

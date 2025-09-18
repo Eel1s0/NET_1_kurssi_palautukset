@@ -1,45 +1,55 @@
 using Raylib_cs;
+using RayGuiCreator;
 
 namespace Asteroids
 {
     public class SettingsMenu
     {
-        private int selectedIndex = 0;
-        private readonly string[] options = { "Sound Volume", "Back" };
-        public float SoundVolume { get; private set; } = 1.0f; // Range: 0.0f - 1.0f
+        private float soundVolume = 1.0f; // Range: 0.0f - 1.0f
+        public float SoundVolume => soundVolume;
+
+        private bool backRequested = false;
 
         public enum SettingsResult { None, Back }
 
+        // Keep keyboard-based quick-exit (Escape) and return the Back result if requested by GUI
         public SettingsResult Update()
         {
-            if (Raylib.IsKeyPressed(KeyboardKey.Down)) selectedIndex = (selectedIndex + 1) % options.Length;
-            if (Raylib.IsKeyPressed(KeyboardKey.Up)) selectedIndex = (selectedIndex - 1 + options.Length) % options.Length;
-
-            if (selectedIndex == 0)
+            if (Raylib.IsKeyPressed(KeyboardKey.Escape))
             {
-                if (Raylib.IsKeyDown(KeyboardKey.Right)) SoundVolume = MathF.Min(1.0f, SoundVolume + 0.01f);
-                if (Raylib.IsKeyDown(KeyboardKey.Left)) SoundVolume = MathF.Max(0.0f, SoundVolume - 0.01f);
+                return SettingsResult.Back;
             }
 
-            if (Raylib.IsKeyPressed(KeyboardKey.Enter))
+            if (backRequested)
             {
-                if (selectedIndex == 1)
-                    return SettingsResult.Back;
+                backRequested = false;
+                return SettingsResult.Back;
             }
+
             return SettingsResult.None;
         }
 
+        // Use RayGuiCreator.MenuCreator's Slider and Button to draw and interact
         public void Draw(int screenWidth, int screenHeight)
         {
-            Raylib.DrawText("SETTINGS", screenWidth / 2 - 80, 100, 40, Color.White);
+            // MenuCreator will handle layout and RayGui calls
+            var mc = new MenuCreator(screenWidth / 2 - 150, 140, 36, 300);
 
-            for (int i = 0; i < options.Length; i++)
+            mc.Label("SETTINGS");
+
+            // Slider shows 0%..100% and updates soundVolume directly
+            mc.Slider("0%", "100%", ref soundVolume, 0.0f, 1.0f);
+
+            // Apply volume immediately from SettingsMenu (RayGui doesn't manage global audio)
+            Raylib.SetMasterVolume(soundVolume);
+
+            // Back button — set a flag that Update() will pick up (safe even though Draw runs after Update)
+            if (mc.Button("Back"))
             {
-                string text = options[i];
-                if (i == 0) text += $": {(int)(SoundVolume * 100)}%";
-                var color = (i == selectedIndex) ? Color.Yellow : Color.White;
-                Raylib.DrawText(text, screenWidth / 2 - 100, 200 + i * 40, 30, color);
+                backRequested = true;
             }
+
+            mc.EndMenu();
         }
     }
 }

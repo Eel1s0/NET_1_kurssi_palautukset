@@ -11,15 +11,14 @@ namespace Asteroids
         Playing,
         GameOver,
         Settings,
-        Paused
+        Paused,
+        Quit
     }
     class Program
     {
 
         public static int screenWidth = 800;
         public static int screenHeight = 600;
-        public static bool isGameOver = false; // Tracks game state
-
 
         public static Texture2D playerTexture;
         public static Texture2D asteroidTexture;
@@ -29,11 +28,18 @@ namespace Asteroids
         public static Texture2D backgroundTexture;
         public static Vector2 gravity = new Vector2(0, 0.1f);
 
-        public static int level = 1; // New: Track the current level
+        public static int level = 1; // Track the current level
         public static Random random = new Random();
         public static GameState currentState = GameState.MainMenu;
-        public static MainMenu mainMenu = new MainMenu();
+        public static MainMenu mainMenu; // instantiate and subscribe in Main
         public static SettingsMenu settingsMenu = new SettingsMenu();
+
+        // Moved game objects to Program-level static fields so helper methods can access them directly
+        public static Player player;
+        public static List<Asteroid> asteroids;
+        public static List<Bullet> bullets;
+        public static List<Bullet> enemyBullets;
+        public static Enemy enemy;
 
 
         static void Main(string[] args)
@@ -41,17 +47,37 @@ namespace Asteroids
             Raylib.InitWindow(screenWidth, screenHeight, "Asteroids");
             Raylib.SetTargetFPS(60);
 
+            // Disable the default ESC-as-exit behavior in Raylib so Escape can be used in-game
+            Raylib.SetExitKey(KeyboardKey.Null);
+
             // Load textures once
             LoadTextures();
 
-            Player player = new Player(screenWidth / 2, screenHeight / 2, playerTexture);
-            List<Asteroid> asteroids = CreateAsteroids(5, asteroidTexture, player.Position, 150);
-            List<Bullet> bullets = new List<Bullet>();
-            List<Bullet> enemyBullets = new List<Bullet>();
-            Enemy enemy = new Enemy(enemyTexture, enemyBulletTexture, new Vector2(100, 100)); // Enemy spaceship
+            // Create menu and subscribe to its events (event-driven state changes)
+            mainMenu = new MainMenu();
 
+            // Event handlers
+            mainMenu.StartGame += () =>
+            {
+                // Centralized reset and switch to Playing
+                ResetGame();
+                currentState = GameState.Playing;
+            };
+            mainMenu.OpenSettings += () =>
+            {
+                currentState = GameState.Settings;
+            };
+            mainMenu.ExitGame += () =>
+            {
+                // Request quit by setting game state -> loop will exit cleanly
+                currentState = GameState.Quit;
+            };
 
-            while (!Raylib.WindowShouldClose())
+            // Initialize game objects for the first time
+            ResetGame();
+
+            // Loop until the window should close or the game state becomes Quit
+            while (!Raylib.WindowShouldClose() && currentState != GameState.Quit)
             {
                 Raylib.BeginDrawing();
                 Raylib.ClearBackground(Color.Black);
@@ -69,37 +95,16 @@ namespace Asteroids
                 switch (currentState)
                 {
                     case GameState.MainMenu:
-                        var menuResult = mainMenu.Update();
+                        // Event-driven: Update may fire StartGame/OpenSettings/ExitGame
+                        mainMenu.Update();
                         mainMenu.Draw(screenWidth, screenHeight);
-
-                        if (menuResult == MainMenu.MenuResult.StartGame)
-                        {
-                            isGameOver = false;
-                            level = 1;
-                            player = new Player(screenWidth / 2, screenHeight / 2, playerTexture);
-                            asteroids = CreateAsteroids(5, asteroidTexture, player.Position, 150);
-                            bullets.Clear();
-                            enemyBullets.Clear();
-                            enemy = new Enemy(enemyTexture, enemyBulletTexture, new Vector2(100, 100));
-                            currentState = GameState.Playing;
-                        }
-                        else if (menuResult == MainMenu.MenuResult.Settings)
-                        {
-                            currentState = GameState.Settings;
-                        }
-                        else if (menuResult == MainMenu.MenuResult.Exit)
-                        {
-                            Raylib.CloseWindow();
-                        }
                         break;
 
                     case GameState.Settings:
                         var settingsResult = settingsMenu.Update();
                         settingsMenu.Draw(screenWidth, screenHeight);
 
-                        // Apply sound volume setting globally
-                        Raylib.SetMasterVolume(settingsMenu.SoundVolume);
-
+                        // (Moved) sound volume is now applied by SettingsMenu.Update()
                         if (settingsResult == SettingsMenu.SettingsResult.Back)
                         {
                             currentState = GameState.MainMenu;
@@ -113,49 +118,47 @@ namespace Asteroids
                             currentState = GameState.Paused;
                             break;
                         }
-                        if (!isGameOver)
+
+                        // Update entities
+                        player.Update();
+                        enemy.Update(enemyBullets);
+
+                        foreach (var bullet in bullets) bullet.Update();
+                        foreach (var enemyBullet in enemyBullets) enemyBullet.Update();
+
+                        bullets.RemoveAll(b => !b.IsOnScreen() || b.IsExpired());
+                        enemyBullets.RemoveAll(b => !b.IsOnScreen() || b.IsExpired());
+
+                        foreach (var asteroid in asteroids) asteroid.Update();
+
+                        // Check collisions (this now updates currentState to GameOver when needed)
+                        CheckPlayerCollisions(player, asteroids, enemyBullets);
+
+                        // If a collision turned the state into GameOver, skip the rest of the frame's playing logic
+                        if (currentState == GameState.GameOver) break;
+
+                        CheckBulletCollisions(bullets, asteroids, enemy);
+
+                        // Check if level is complete
+                        if (asteroids.Count == 0 && enemy.IsDestroyed)
                         {
-                            // Update entities
-                            player.Update();
-                            enemy.Update(enemyBullets);
-
-                            foreach (var bullet in bullets) bullet.Update();
-                            foreach (var enemyBullet in enemyBullets) enemyBullet.Update();
-
-                            bullets.RemoveAll(b => !b.IsOnScreen() || b.IsExpired());
-                            enemyBullets.RemoveAll(b => !b.IsOnScreen() || b.IsExpired());
-
-                            foreach (var asteroid in asteroids) asteroid.Update();
-
-                            // Check collisions
-                            CheckPlayerCollisions(player, asteroids, enemyBullets);
-                            CheckBulletCollisions(bullets, asteroids, enemy);
-
-                            // Check if level is complete
-                            if (asteroids.Count == 0 && enemy.IsDestroyed)
-                            {
-                                level++; // Increase the level
-                                StartNextLevel(ref player, ref asteroids, ref bullets, ref enemyBullets, ref enemy);
-                            }
-
-                            // Shoot bullets
-                            if (Raylib.IsKeyDown(KeyboardKey.Space)) player.Shoot(bullets, bulletTexture);
-
-                            // Draw game objects
-                            player.Draw();
-                            enemy.Draw();
-                            foreach (var bullet in bullets) bullet.Draw();
-                            foreach (var enemyBullet in enemyBullets) enemyBullet.Draw();
-                            foreach (var asteroid in asteroids) asteroid.Draw();
-
-                            // Display the current level
-                            Raylib.DrawText($"Level: {level}", 10, 10, 20, Color.White);
-
-                            if (isGameOver)
-                            {
-                                currentState = GameState.GameOver;
-                            }
+                            level++; // Increase the level
+                            StartNextLevel();
                         }
+
+                        // Shoot bullets
+                        if (Raylib.IsKeyDown(KeyboardKey.Space)) player.Shoot(bullets, bulletTexture);
+
+                        // Draw game objects
+                        player.Draw();
+                        enemy.Draw();
+                        foreach (var bullet in bullets) bullet.Draw();
+                        foreach (var enemyBullet in enemyBullets) enemyBullet.Draw();
+                        foreach (var asteroid in asteroids) asteroid.Draw();
+
+                        // Display the current level
+                        Raylib.DrawText($"Level: {level}", 10, 10, 20, Color.White);
+
                         break;
 
                     case GameState.Paused:
@@ -181,13 +184,8 @@ namespace Asteroids
 
                         if (Raylib.IsKeyPressed(KeyboardKey.R))
                         {
-                            isGameOver = false;
-                            level = 1;
-                            player = new Player(screenWidth / 2, screenHeight / 2, playerTexture);
-                            asteroids = CreateAsteroids(5, asteroidTexture, player.Position, 150);
-                            bullets.Clear();
-                            enemyBullets.Clear();
-                            enemy = new Enemy(enemyTexture, enemyBulletTexture, new Vector2(100, 100));
+                            // Reuse ResetGame to restart cleanly
+                            ResetGame();
                             currentState = GameState.Playing;
                         }
                         else if (Raylib.IsKeyPressed(KeyboardKey.M))
@@ -200,10 +198,12 @@ namespace Asteroids
                 Raylib.EndDrawing();
             }
 
+            // Clean shutdown: unload resources and then close the window once we are outside BeginDrawing/EndDrawing
             UnloadTextures();
             Raylib.CloseWindow();
         }
 
+        // ... rest of Program.cs remains unchanged ...
         static void LoadTextures()
         {
             // Preload textures
@@ -261,38 +261,34 @@ namespace Asteroids
             // Ensure the asteroid is valid before proceeding
             if (asteroid == null) return;
 
-            // Check the size of the asteroid and split accordingly
-            if (asteroid.Size == AsteroidSize.Large)
+            // Only split if it's not already the smallest size
+            if (asteroid.Size != AsteroidSize.Small)
             {
-                // Create two medium asteroids
-                asteroids.Add(new Asteroid(asteroid.Texture, asteroid.Position, asteroid.Velocity * 0.8f, AsteroidSize.Medium));
-                asteroids.Add(new Asteroid(asteroid.Texture, asteroid.Position, asteroid.Velocity * -0.8f, AsteroidSize.Medium));
-            }
-            else if (asteroid.Size == AsteroidSize.Medium)
-            {
-                // Create two small asteroids
-                asteroids.Add(new Asteroid(asteroid.Texture, asteroid.Position, asteroid.Velocity * 0.8f, AsteroidSize.Small));
-                asteroids.Add(new Asteroid(asteroid.Texture, asteroid.Position, asteroid.Velocity * -0.8f, AsteroidSize.Small));
-            }
+                // Enum is backed by int; cast to get the next smaller size
+                AsteroidSize nextSize = (AsteroidSize)((int)asteroid.Size - 1);
 
-            // Small asteroids do not split further
+                asteroids.Add(new Asteroid(asteroid.Texture, asteroid.Position, asteroid.Velocity * 0.8f, nextSize));
+                asteroids.Add(new Asteroid(asteroid.Texture, asteroid.Position, asteroid.Velocity * -0.8f, nextSize));
+            }
         }
 
 
-        static void RestartGame(ref Player player, ref List<Asteroid> asteroids, ref List<Bullet> bullets, ref List<Bullet> enemyBullets, ref Enemy enemy)
+        // Centralized reset used for starting/restarting the game
+        static void ResetGame(int initialAsteroidCount = 5)
         {
-            isGameOver = false;
             level = 1; // Reset the level
 
             player = new Player(screenWidth / 2, screenHeight / 2, playerTexture);
-            asteroids = CreateAsteroids(5, asteroidTexture, player.Position, 150);
-            bullets.Clear();
-            enemyBullets.Clear();
+            asteroids = CreateAsteroids(initialAsteroidCount, asteroidTexture, player.Position, 150);
+            bullets = new List<Bullet>();
+            enemyBullets = new List<Bullet>();
             enemy = new Enemy(enemyTexture, enemyBulletTexture, new Vector2(100, 100));
         }
 
-        static void StartNextLevel(ref Player player, ref List<Asteroid> asteroids, ref List<Bullet> bullets, ref List<Bullet> enemyBullets, ref Enemy enemy)
+        // Start next level without ref parameters — uses Program-level fields
+        static void StartNextLevel()
         {
+            // Reposition player and increase asteroid count according to level
             player = new Player(screenWidth / 2, screenHeight / 2, playerTexture);
             asteroids = CreateAsteroids(5 + level, asteroidTexture, player.Position, 150); // Increase asteroid count
             bullets.Clear();
@@ -303,10 +299,10 @@ namespace Asteroids
         static void CheckPlayerCollisions(Player player, List<Asteroid> asteroids, List<Bullet> enemyBullets)
         {
             foreach (var asteroid in asteroids)
-                if (player.CollidesWith(asteroid)) { isGameOver = true; break; }
+                if (player.CollidesWith(asteroid)) { currentState = GameState.GameOver; return; }
 
             foreach (var enemyBullet in enemyBullets)
-                if (player.CollidesWith(enemyBullet)) { isGameOver = true; break; }
+                if (player.CollidesWith(enemyBullet)) { currentState = GameState.GameOver; return; }
         }
 
         static void CheckBulletCollisions(List<Bullet> bullets, List<Asteroid> asteroids, Enemy enemy)
@@ -343,6 +339,3 @@ namespace Asteroids
         }
     }
 }
-
-
-    

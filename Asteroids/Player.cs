@@ -11,8 +11,14 @@ namespace Asteroids
         public Vector2 Position;
         public Vector2 Velocity;
         private Texture2D Texture; // The texture for the player
-        private float Acceleration = 0.2f; // Force applied by WASD keys
-        private float MaxSpeed = 5.0f;     // Maximum speed limit
+
+        // Movement parameters (units are per second where appropriate)
+        private float Acceleration = 200.0f; // pixels/s^2
+        private float MaxSpeed = 300.0f;     // pixels/s
+
+        // Visual / collision scale (kept as a named field instead of a magic number)
+        private float DrawScale = 0.5f;
+
         private float Rotation = 0.0f;    // Rotation angle in degrees
         private float ShootCooldown = 0.1f; // Time between shots
         private float TimeUntilNextShot = 0.0f; // Countdown until next shot
@@ -20,52 +26,59 @@ namespace Asteroids
         public Player(float x, float y, Texture2D texture)
         {
             Position = new Vector2(x, y);
-            Velocity = new Vector2(0, 0);
-
+            Velocity = Vector2.Zero;
             Texture = texture;
-
         }
 
         public void Update()
         {
-            // Apply forces based on input (WASD keys)
-            if (Raylib.IsKeyDown(KeyboardKey.W)) // Up
-                Velocity.Y -= Acceleration;
-            if (Raylib.IsKeyDown(KeyboardKey.S)) // Down
-                Velocity.Y += Acceleration;
-            if (Raylib.IsKeyDown(KeyboardKey.A)) // Left
-                Velocity.X -= Acceleration;
-            if (Raylib.IsKeyDown(KeyboardKey.D)) // Right
-                Velocity.X += Acceleration;
+            // Make movement framerate independent
+            float dt = Raylib.GetFrameTime();
 
-            // Clamp the velocity to the maximum speed
+            // Input -> direction vector
+            Vector2 input = Vector2.Zero;
+            if (Raylib.IsKeyDown(KeyboardKey.W)) input.Y -= 1f;
+            if (Raylib.IsKeyDown(KeyboardKey.S)) input.Y += 1f;
+            if (Raylib.IsKeyDown(KeyboardKey.A)) input.X -= 1f;
+            if (Raylib.IsKeyDown(KeyboardKey.D)) input.X += 1f;
+
+            if (input.Length() > 0f)
+            {
+                input = Vector2.Normalize(input);
+                // Acceleration applied per second -> scale by dt
+                Velocity += input * Acceleration * dt;
+            }
+
+            // Clamp speed (vel is in pixels/s)
             if (Velocity.Length() > MaxSpeed)
             {
                 Velocity = Vector2.Normalize(Velocity) * MaxSpeed;
             }
 
-            Position.X += Velocity.X;
-            Position.Y += Velocity.Y;
+            // Integrate position
+            Position += Velocity * dt;
 
-            if (Velocity.Length() > 0) // Only update rotation if the player is moving
+            // Update facing direction from velocity (degrees)
+            if (Velocity.Length() > 0.001f)
             {
                 Rotation = MathF.Atan2(Velocity.Y, Velocity.X) * Raylib.RAD2DEG;
             }
 
-            // Cooldown for shooting
-            if (TimeUntilNextShot > 0)
-            {
-                TimeUntilNextShot -= Raylib.GetFrameTime();
-            }
+            // Shooting cooldown
+            if (TimeUntilNextShot > 0f) TimeUntilNextShot -= dt;
 
             WrapPosition();
         }
 
         public void Shoot(List<Bullet> bullets, Texture2D bulletTexture)
         {
-            if (TimeUntilNextShot <= 0)
+            if (TimeUntilNextShot <= 0f)
             {
-                Vector2 direction = new Vector2(MathF.Cos(Rotation * Raylib.DEG2RAD), MathF.Sin(Rotation * Raylib.DEG2RAD));
+                // Use Raylib's Raymath helper to compute direction from rotation
+                float rad = Rotation * Raylib.DEG2RAD;
+                Vector2 direction = Raymath.Vector2Rotate(new Vector2(1f, 0f), rad);
+                direction = Vector2.Normalize(direction);
+
                 bullets.Add(new Bullet(Position, direction, bulletTexture));
                 TimeUntilNextShot = ShootCooldown;
             }
@@ -73,17 +86,16 @@ namespace Asteroids
 
         public void Draw()
         {
-            // Scale factor for reducing the size
-            float scale = 0.5f;
+            Vector2 origin = new Vector2(Texture.Width / 2f, Texture.Height / 2f);
+            float scaledW = Texture.Width * DrawScale;
+            float scaledH = Texture.Height * DrawScale;
 
-            // Draw the texture at the player's position, rotated 90 degrees to the right and scaled
-            Vector2 origin = new Vector2(Texture.Width / 4, Texture.Height / 4); // Center of the image
             Raylib.DrawTexturePro(
                 Texture,
-                new Rectangle(0, 0, Texture.Width, Texture.Height), // Source rectangle (full texture)
-                new Rectangle(Position.X, Position.Y, Texture.Width * scale, Texture.Height * scale), // Destination rectangle (scaled size)
-                origin, // Origin (rotation center)
-                Rotation + 90, // Add 90 degrees to the rotation
+                new Rectangle(0, 0, Texture.Width, Texture.Height),
+                new Rectangle(Position.X - scaledW / 2f, Position.Y - scaledH / 2f, scaledW, scaledH),
+                origin,
+                Rotation + 90f, // texture orientation adjustment
                 Color.White
             );
         }
@@ -97,20 +109,23 @@ namespace Asteroids
             else if (Position.Y > Program.screenHeight) Position.Y = 0;
         }
 
+        // Expose collision radius so callers don't need to use magic numbers
+        public float GetRadius()
+        {
+            // radius = half of the drawn width
+            return (Texture.Width * DrawScale) / 2f;
+        }
+
         public bool CollidesWith(Asteroid asteroid)
         {
-            float dx = Position.X - asteroid.Position.X;
-            float dy = Position.Y - asteroid.Position.Y;
-            float distance = MathF.Sqrt(dx * dx + dy * dy);
-            return distance < asteroid.GetRadius();
+            // Use Raylib's built-in circle collision check
+            return Raylib.CheckCollisionCircles(Position, GetRadius(), asteroid.Position, asteroid.GetRadius());
         }
 
         public bool CollidesWith(Bullet bullet)
         {
-            float dx = Position.X - bullet.Position.X;
-            float dy = Position.Y - bullet.Position.Y;
-            float distance = MathF.Sqrt(dx * dx + dy * dy);
-            return distance < Texture.Width * 0.3f; // Adjust collision radius as needed
+            // Use Raylib's built-in circle collision check and explicit radii (no magic numbers)
+            return Raylib.CheckCollisionCircles(Position, GetRadius(), bullet.Position, bullet.GetRadius());
         }
     }
 }

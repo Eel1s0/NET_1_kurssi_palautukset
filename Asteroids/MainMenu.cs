@@ -9,9 +9,13 @@ namespace Asteroids
         private int selectedIndex = 0;
         private readonly string[] options = { "Start Game", "Settings", "Exit" };
 
-        public enum MenuResult { None, StartGame, Settings, Exit }
+        // Events for menu actions
+        public event Action? StartGame;
+        public event Action? OpenSettings;
+        public event Action? ExitGame;
 
-        public MenuResult Update()
+        // Now Update fires events instead of returning a MenuResult.
+        public void Update()
         {
             if (Raylib.IsKeyPressed(KeyboardKey.Down)) selectedIndex = (selectedIndex + 1) % options.Length;
             if (Raylib.IsKeyPressed(KeyboardKey.Up)) selectedIndex = (selectedIndex - 1 + options.Length) % options.Length;
@@ -20,12 +24,17 @@ namespace Asteroids
             {
                 switch (selectedIndex)
                 {
-                    case 0: return MenuResult.StartGame;
-                    case 1: return MenuResult.Settings;
-                    case 2: return MenuResult.Exit;
+                    case 0:
+                        StartGame?.Invoke();
+                        break;
+                    case 1:
+                        OpenSettings?.Invoke();
+                        break;
+                    case 2:
+                        ExitGame?.Invoke();
+                        break;
                 }
             }
-            return MenuResult.None;
         }
 
         public void Draw(int screenWidth, int screenHeight)
