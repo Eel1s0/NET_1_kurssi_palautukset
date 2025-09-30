@@ -12,6 +12,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\RayGuiCreator\RayGuiCreator\RayGuiCreator.csproj" />
     <ProjectReference Include="..\RainDrop\RainDrop.csproj" />
   </ItemGroup>
 

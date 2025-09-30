@@ -1,41 +1,41 @@
-﻿using System;
+﻿/// <summary>
+/// KOODI TEHTY AI AVUSTUKSELLA
+/// </summary>
+using System;
 using System.Numerics;
 using System.Collections.Generic;
 using Raylib_cs;
-using RainDrop;
+using Asteroids.Components;
 
 namespace Asteroids
 {
     class Player
     {
-        public Vector2 Position;
-        public Vector2 Velocity;
-        private Texture2D Texture; // The texture for the player
+        // Components
+        private TransformComponent transform;
+        private MovementComponent movement;
+        private RenderComponent renderer;
+        private CollisionComponent collider;
+        public TransformComponent Transform => transform;
+        public CollisionComponent Collider => collider;
 
-        // Movement parameters (units are per second where appropriate)
-        private float Acceleration = 200.0f; // pixels/s^2
-        private float MaxSpeed = 300.0f;     // pixels/s
-
-        // Visual / collision scale (kept as a named field instead of a magic number)
-        private float DrawScale = 0.5f;
-
-        private float Rotation = 0.0f;    // Rotation angle in degrees
-        private float ShootCooldown = 0.1f; // Time between shots
-        private float TimeUntilNextShot = 0.0f; // Countdown until next shot
+        private float Acceleration = 400f;
+        private float ShootCooldown = 0.1f;
+        private float timeUntilNextShot = 0f;
 
         public Player(float x, float y, Texture2D texture)
         {
-            Position = new Vector2(x, y);
-            Velocity = Vector2.Zero;
-            Texture = texture;
+            transform = new TransformComponent(x, y);
+            movement = new MovementComponent(maxSpeed: 300f);
+            renderer = new RenderComponent(texture, drawScale: 0.5f);
+            // Ensure the collider uses the renderer's scale
+            collider = new CollisionComponent(renderer.GetDrawRadius());
         }
 
         public void Update()
         {
-            // Make movement framerate independent
             float dt = Raylib.GetFrameTime();
 
-            // Input -> direction vector
             Vector2 input = Vector2.Zero;
             if (Raylib.IsKeyDown(KeyboardKey.W)) input.Y -= 1f;
             if (Raylib.IsKeyDown(KeyboardKey.S)) input.Y += 1f;
@@ -45,87 +45,56 @@ namespace Asteroids
             if (input.Length() > 0f)
             {
                 input = Vector2.Normalize(input);
-                // Acceleration applied per second -> scale by dt
-                Velocity += input * Acceleration * dt;
+                movement.ApplyForce(input * Acceleration, dt);
             }
 
-            // Clamp speed (vel is in pixels/s)
-            if (Velocity.Length() > MaxSpeed)
+            movement.Integrate(transform, dt);
+
+            if (movement.Speed > 0.001f)
             {
-                Velocity = Vector2.Normalize(Velocity) * MaxSpeed;
+                transform.Rotation = MathF.Atan2(movement.Velocity.Y, movement.Velocity.X) * Raylib.RAD2DEG;
             }
 
-            // Integrate position
-            Position += Velocity * dt;
+            if (timeUntilNextShot > 0f) timeUntilNextShot -= dt;
 
-            // Update facing direction from velocity (degrees)
-            if (Velocity.Length() > 0.001f)
-            {
-                Rotation = MathF.Atan2(Velocity.Y, Velocity.X) * Raylib.RAD2DEG;
-            }
-
-            // Shooting cooldown
-            if (TimeUntilNextShot > 0f) TimeUntilNextShot -= dt;
-
-            WrapPosition();
+            WrapComponent.Wrap(ref transform.Position);
         }
 
         public void Shoot(List<Bullet> bullets, Texture2D bulletTexture)
         {
-            if (TimeUntilNextShot <= 0f)
+            if (timeUntilNextShot <= 0f)
             {
-                // Use Raylib's Raymath helper to compute direction from rotation
-                float rad = Rotation * Raylib.DEG2RAD;
+                float rad = transform.Rotation * Raylib.DEG2RAD;
                 Vector2 direction = Raymath.Vector2Rotate(new Vector2(1f, 0f), rad);
                 direction = Vector2.Normalize(direction);
-
-                bullets.Add(new Bullet(Position, direction, bulletTexture));
-                TimeUntilNextShot = ShootCooldown;
+                bullets.Add(new Bullet(transform.Position, direction, bulletTexture));
+                timeUntilNextShot = ShootCooldown;
             }
         }
 
         public void Draw()
         {
-            Vector2 origin = new Vector2(Texture.Width / 2f, Texture.Height / 2f);
-            float scaledW = Texture.Width * DrawScale;
-            float scaledH = Texture.Height * DrawScale;
+            renderer.Draw(transform, rotationOffset: 90f);
 
-            Raylib.DrawTexturePro(
-                Texture,
-                new Rectangle(0, 0, Texture.Width, Texture.Height),
-                new Rectangle(Position.X - scaledW / 2f, Position.Y - scaledH / 2f, scaledW, scaledH),
-                origin,
-                Rotation + 90f, // texture orientation adjustment
-                Color.White
-            );
+            // Draw collider if debug mode is active
+            if (Program.IsDebugMode)
+            {
+                Raylib.DrawCircleLines((int)transform.Position.X, (int)transform.Position.Y, collider.GetRadius(), Color.Red);
+            }
         }
 
-        private void WrapPosition()
-        {
-            if (Position.X < 0) Position.X = Program.screenWidth;
-            else if (Position.X > Program.screenWidth) Position.X = 0;
-
-            if (Position.Y < 0) Position.Y = Program.screenHeight;
-            else if (Position.Y > Program.screenHeight) Position.Y = 0;
-        }
-
-        // Expose collision radius so callers don't need to use magic numbers
-        public float GetRadius()
-        {
-            // radius = half of the drawn width
-            return (Texture.Width * DrawScale) / 2f;
-        }
+        public Vector2 Position => transform.Position;
 
         public bool CollidesWith(Asteroid asteroid)
         {
-            // Use Raylib's built-in circle collision check
-            return Raylib.CheckCollisionCircles(Position, GetRadius(), asteroid.Position, asteroid.GetRadius());
+            // Use the exposed components directly
+            return collider.CollidesWith(this.Transform, this.Collider, asteroid.Transform, asteroid.Collider);
         }
 
         public bool CollidesWith(Bullet bullet)
         {
-            // Use Raylib's built-in circle collision check and explicit radii (no magic numbers)
-            return Raylib.CheckCollisionCircles(Position, GetRadius(), bullet.Position, bullet.GetRadius());
+            // Use the exposed components directly
+            return collider.CollidesWith(this.Transform, this.Collider, bullet.Transform, bullet.Collider);
         }
     }
 }

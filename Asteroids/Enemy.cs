@@ -1,104 +1,117 @@
-﻿using System;
+﻿/// <summary>
+/// KOODI TEHTY AI AVUSTUKSELLA
+/// </summary>
+using System;
 using System.Numerics;
 using System.Collections.Generic;
 using Raylib_cs;
+using Asteroids.Components;
 
 namespace Asteroids
 {
     class Enemy
     {
-        public Vector2 Position;
-        public Texture2D Texture;
-        public Texture2D BulletTexture;
-        private Vector2 Velocity;
-        private float ShootCooldown = 2.0f; // Time between shots
-        private float TimeUntilNextShot = 0.0f;
+        // components
+        private TransformComponent transform;
+        private MovementComponent movement;
+        private RenderComponent renderer;
+        private CollisionComponent collider;
+        public TransformComponent Transform => transform;
+        public CollisionComponent Collider => collider;
+
+        private Texture2D bulletTexture;
+        private float shootCooldown = 2.0f;
+        private float timeUntilNextShot = 0f;
+
         public bool IsDestroyed { get; private set; } = false;
-
         private Random random = new Random();
+        public Vector2 Position => transform.Position;
 
-        // Visual / collision scale (single source of truth, no magic numbers)
-        private float DrawScale = 0.6f;
-
+        /// <summary>
+        /// Initializes a new instance of the Enemy class.
+        /// </summary>
+        /// <param name="texture">The texture for the enemy ship.</param>
+        /// <param name="bulletTexture">The texture for the bullets fired by the enemy.</param>
+        /// <param name="startPosition">The initial position of the enemy.</param>
         public Enemy(Texture2D texture, Texture2D bulletTexture, Vector2 startPosition)
         {
-            Texture = texture;
-            BulletTexture = bulletTexture;
-            Position = startPosition;
-            Velocity = new Vector2((float)(random.NextDouble() * 2 - 1), (float)(random.NextDouble() * 2 - 1));
+            transform = new TransformComponent(startPosition.X, startPosition.Y);
+            movement = new MovementComponent(maxSpeed: 150f)
+            {
+                Velocity = new Vector2((float)(random.NextDouble() * 2 - 1), (float)(random.NextDouble() * 2 - 1))
+            };
+            renderer = new RenderComponent(texture, drawScale: 0.6f);
+            collider = new CollisionComponent((texture.Width * 0.6f) / 2f);
+            this.bulletTexture = bulletTexture;
         }
 
+        /// <summary>
+        /// Updates the enemy's state, including movement and shooting logic.
+        /// </summary>
         public void Update(List<Bullet> enemyBullets)
         {
             if (IsDestroyed) return;
 
             float dt = Raylib.GetFrameTime();
+            movement.Integrate(transform, dt);
 
-            Position += Velocity * dt;
+            WrapComponent.Wrap(ref transform.Position);
 
-            // Wrap around the screen
-            if (Position.X < 0) Position.X = Program.screenWidth;
-            else if (Position.X > Program.screenWidth) Position.X = 0;
-
-            if (Position.Y < 0) Position.Y = Program.screenHeight;
-            else if (Position.Y > Program.screenHeight) Position.Y = 0;
-
-            // Randomly change direction
             if (random.NextDouble() < 0.01)
             {
-                Velocity = new Vector2((float)(random.NextDouble() * 2 - 1), (float)(random.NextDouble() * 2 - 1));
+                movement.Velocity = new Vector2((float)(random.NextDouble() * 2 - 1), (float)(random.NextDouble() * 2 - 1)) * 100f;
             }
 
-            // Shoot bullets
-            if (TimeUntilNextShot <= 0)
+            if (timeUntilNextShot <= 0f)
             {
                 Shoot(enemyBullets);
-                TimeUntilNextShot = ShootCooldown;
+                timeUntilNextShot = shootCooldown;
             }
-            else
-            {
-                TimeUntilNextShot -= dt;
-            }
+            else timeUntilNextShot -= dt;
         }
 
+        /// <summary>
+        /// Creates a new bullet and adds it to the list of enemy bullets.
+        /// </summary>
         public void Shoot(List<Bullet> enemyBullets)
         {
-            Vector2 direction = new Vector2((float)(random.NextDouble() * 2 - 1), (float)(random.NextDouble() * 2 - 1));
-            if (direction.Length() == 0f) direction = new Vector2(1f, 0f);
-            enemyBullets.Add(new Bullet(Position, direction, BulletTexture));
+            Vector2 dir = new Vector2((float)(random.NextDouble() * 2 - 1), (float)(random.NextDouble() * 2 - 1));
+            if (dir.Length() == 0f) dir = new Vector2(1f, 0f);
+            enemyBullets.Add(new Bullet(transform.Position, dir, bulletTexture));
         }
 
+        /// <summary>
+        /// Draws the enemy ship and its collider if debug mode is active.
+        /// </summary>
         public void Draw()
         {
             if (IsDestroyed) return;
 
-            Vector2 origin = new Vector2(Texture.Width / 2f, Texture.Height / 2f);
-            float scaledW = Texture.Width * DrawScale;
-            float scaledH = Texture.Height * DrawScale;
+            renderer.Draw(transform, rotationOffset: 0f);
 
-            Raylib.DrawTexturePro(Texture,
-                new Rectangle(0, 0, Texture.Width, Texture.Height),
-                new Rectangle(Position.X - scaledW / 2f, Position.Y - scaledH / 2f, scaledW, scaledH),
-                origin,
-                0,
-                Color.White);
+            // Draw collider if debug mode is active
+            if (Program.IsDebugMode)
+            {
+                Raylib.DrawCircleLines((int)transform.Position.X, (int)transform.Position.Y, GetRadius(), Color.Purple);
+            }
         }
 
-        // Expose radius so collisions use an explicit, named value (no magic numbers)
-        public float GetRadius()
-        {
-            return (Texture.Width * DrawScale) / 2f;
-        }
+        /// <Summary>
+        /// Gets the radius of the enemy's collider.
+        /// The collider radius.
+        public float GetRadius() => collider.GetRadius();
 
+        
+        /// Checks for a collision with the specified bullet.
+        /// The bullet to check for collision against.
+        /// True if a collision occurs, otherwise false.
         public bool CollidesWith(Bullet bullet)
         {
-            // Use Raylib collision helper and explicit radii
-            return Raylib.CheckCollisionCircles(Position, GetRadius(), bullet.Position, bullet.GetRadius());
+            return collider.CollidesWith(this.Transform, this.Collider, bullet.Transform, bullet.Collider);
         }
 
-        public void Destroy()
-        {
-            IsDestroyed = true;
-        }
+        
+        /// Marks the enemy as destroyed.
+        public void Destroy() => IsDestroyed = true;
     }
 }

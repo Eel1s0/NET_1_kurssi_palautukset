@@ -1,79 +1,81 @@
-﻿using System;
+﻿/// <summary>
+/// KOODI TEHTY AI AVUSTUKSELLA
+/// </summary>
+using System;
 using System.Numerics;
 using Raylib_cs;
+using Asteroids.Components;
 
 namespace Asteroids
 {
     class Bullet
     {
-        public Vector2 Position;
-        public Vector2 Velocity;
-        private Texture2D Texture;
-        private float Speed = 500.0f; // pixels/s
-        private float Rotation; // degrees
-        private float Lifespan = 2.0f; // seconds
-        private float Age = 0.0f;
+        // components
+        private TransformComponent transform;
+        private MovementComponent movement;
+        private RenderComponent renderer;
+        private CollisionComponent collider;
+        public TransformComponent Transform => transform;
+        public CollisionComponent Collider => collider;
 
-        // Visual / collision scale exposed via GetRadius() (no hidden magic numbers in collision calls)
-        private float DrawScale = 0.25f;
+        private float lifespan = 2.0f;
+        private float age = 0.0f;
 
         public Bullet(Vector2 position, Vector2 direction, Texture2D texture)
         {
-            Position = position;
-            Texture = texture;
-            Vector2 dirNorm = Vector2.Normalize(direction);
-            Velocity = dirNorm * Speed;
-            Rotation = MathF.Atan2(dirNorm.Y, dirNorm.X) * Raylib.RAD2DEG;
+            transform = new TransformComponent(position.X, position.Y);
+            movement = new MovementComponent(maxSpeed: 1000f);
+            movement.Velocity = Vector2.Normalize(direction) * 500f;
+            renderer = new RenderComponent(texture, drawScale: 0.25f);
+            // Ensure the collider uses the renderer's scale
+            collider = new CollisionComponent(renderer.GetDrawRadius());
         }
 
         public void Update()
         {
             float dt = Raylib.GetFrameTime();
-            Position += Velocity * dt;
-            Age += dt;
+            movement.Integrate(transform, dt);
+            age += dt;
         }
 
-        public bool IsExpired()
-        {
-            return Age >= Lifespan;
-        }
+        public bool IsExpired() => age >= lifespan;
 
         public void Draw()
         {
-            Vector2 origin = new Vector2(Texture.Width / 2f, Texture.Height / 2f);
-            float scaledW = Texture.Width * DrawScale;
-            float scaledH = Texture.Height * DrawScale;
+            // Compute visual rotation from velocity and add 90 degrees so sprite orientation matches ship nose
+            float angleDeg = movement.Velocity.Length() > 0
+                ? MathF.Atan2(movement.Velocity.Y, movement.Velocity.X) * Raylib.RAD2DEG
+                : 0f;
 
-            Raylib.DrawTexturePro(
-                Texture,
-                new Rectangle(0, 0, Texture.Width, Texture.Height),
-                new Rectangle(Position.X - scaledW / 2f, Position.Y - scaledH / 2f, scaledW, scaledH),
-                origin,
-                Rotation,
-                Color.White
-            );
+            // Add 90 deg to rotate the bullet sprite to match ship orientation
+            renderer.Draw(transform, rotationOffset: angleDeg + 90f);
+
+            // Draw collider if debug mode is active
+            if (Program.IsDebugMode)
+            {
+                Raylib.DrawCircleLines((int)transform.Position.X, (int)transform.Position.Y, GetRadius(), Color.Blue);
+            }
         }
 
         public bool IsOnScreen()
         {
-            return Position.X >= 0 && Position.X <= Program.screenWidth && Position.Y >= 0 && Position.Y <= Program.screenHeight;
+            float r = GetRadius();
+            return transform.Position.X + r >= 0 && transform.Position.X - r <= Program.screenWidth
+                && transform.Position.Y + r >= 0 && transform.Position.Y - r <= Program.screenHeight;
         }
 
-        // Expose radius explicitly so collisions use consistent, named scale instead of magic numbers
-        public float GetRadius()
-        {
-            return (Texture.Width * DrawScale) / 2f;
-        }
+        public float GetRadius() => collider.GetRadius();
+
+        public Vector2 Position => transform.Position;
 
         public bool CollidesWith(Asteroid asteroid)
         {
-            return Raylib.CheckCollisionCircles(Position, GetRadius(), asteroid.Position, asteroid.GetRadius());
+            return collider.CollidesWith(this.Transform, this.Collider, asteroid.Transform, asteroid.Collider);
         }
 
         public bool CollidesWith(Enemy enemy)
         {
-            // Assume Enemy would also expose GetRadius() — use its collision helper if available
-            return Raylib.CheckCollisionCircles(Position, GetRadius(), enemy.Position, enemy.GetRadius());
+            return collider.CollidesWith(this.Transform, this.Collider, enemy.Transform, enemy.Collider);
         }
     }
 }

@@ -1,6 +1,10 @@
-﻿using System;
+﻿/// <summary>
+/// KOODI TEHTY AI AVUSTUKSELLA
+/// </summary>
+using System;
 using System.Numerics;
 using Raylib_cs;
+using Asteroids.Components;
 
 namespace Asteroids
 {
@@ -13,61 +17,59 @@ namespace Asteroids
 
     class Asteroid
     {
-        public Vector2 Position;
-        public Vector2 Velocity;
-        public Texture2D Texture;
-        public AsteroidSize Size;
-        private float Rotation;
-        private float Scale;
+        private TransformComponent transform;
+        private MovementComponent movement;
+        private RenderComponent renderer;
+        private CollisionComponent collider;
+
+        public Texture2D Texture => renderer.Texture;
+        public Vector2 Position => transform.Position;
+        public Vector2 Velocity => movement.Velocity;
+        public AsteroidSize Size { get; private set; }
+        public TransformComponent Transform => transform;
+        public CollisionComponent Collider => collider;
+
+        private float rotationSpeed = 30f;
+        
 
         public Asteroid(Texture2D texture, Vector2 position, Vector2 velocity, AsteroidSize size)
         {
-            Texture = texture;
-            Position = position;
-            Velocity = velocity;
+            transform = new TransformComponent(position.X, position.Y);
+            movement = new MovementComponent(maxSpeed: 500f) { Velocity = velocity };
             Size = size;
-            Rotation = 0;
 
-            // Set scale based on size
-            Scale = size switch
+            float scale = size switch
             {
                 AsteroidSize.Large => 1.0f,
                 AsteroidSize.Medium => 0.6f,
                 AsteroidSize.Small => 0.3f,
                 _ => 1.0f
             };
+
+            renderer = new RenderComponent(texture, drawScale: scale);
+            // Correctly calculate the radius based on the scale for this size
+            collider = new CollisionComponent(renderer.GetDrawRadius());
         }
 
         public void Update()
         {
-            Position += Velocity;
-            Rotation += 1.0f; // Rotate asteroid
-            WrapPosition();
+            float dt = Raylib.GetFrameTime();
+            movement.Integrate(transform, dt);
+
+            transform.Rotation += rotationSpeed * dt;
+
+            WrapComponent.Wrap(ref transform.Position);
         }
 
         public void Draw()
         {
-            Vector2 origin = new Vector2(Texture.Width / 4, Texture.Height / 4);
-            Raylib.DrawTexturePro(Texture,
-                new Rectangle(0, 0, Texture.Width, Texture.Height),
-                new Rectangle(Position.X, Position.Y, Texture.Width * Scale, Texture.Height * Scale),
-                origin,
-                Rotation,
-                Color.White);
+            renderer.Draw(transform, rotationOffset: 0f);
+            if (Program.IsDebugMode)
+            {
+                Raylib.DrawCircleLines((int)transform.Position.X, (int)transform.Position.Y, GetRadius(), Color.Green);
+            }
         }
 
-        private void WrapPosition()
-        {
-            if (Position.X < 0) Position.X = Program.screenWidth;
-            else if (Position.X > Program.screenWidth) Position.X = 0;
-
-            if (Position.Y < 0) Position.Y = Program.screenHeight;
-            else if (Position.Y > Program.screenHeight) Position.Y = 0;
-        }
-
-        public float GetRadius()
-        {
-            return Texture.Width * Scale / 2;
-        }
+        public float GetRadius() => collider.GetRadius();
     }
 }
