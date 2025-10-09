@@ -17,8 +17,7 @@ namespace Asteroids
         Playing,
         GameOver,
         Settings,
-        Paused,
-        Quit
+        Paused
     }
 
     class Program
@@ -35,8 +34,7 @@ namespace Asteroids
 
         public static int level = 1;
         public static Random random = new Random();
-        public static GameState currentState = GameState.MainMenu;
-        public static GameState previousState;
+        public static Stack<GameState> gameStates = new Stack<GameState>();
         public static MainMenu mainMenu;
         public static SettingsMenu settingsMenu;
         public static PauseMenu pauseMenu;
@@ -65,17 +63,19 @@ namespace Asteroids
             settingsMenu = new SettingsMenu();
             pauseMenu = new PauseMenu();
 
-            mainMenu.StartGame += () => { SetupLevel(true); currentState = GameState.Playing; };
-            mainMenu.OpenSettings += () => { previousState = currentState; currentState = GameState.Settings; };
-            mainMenu.ExitGame += () => { currentState = GameState.Quit; };
-            settingsMenu.Back += () => { currentState = previousState; };
-            pauseMenu.ResumeGame += () => { currentState = GameState.Playing; };
-            pauseMenu.OpenSettings += () => { previousState = currentState; currentState = GameState.Settings; };
-            pauseMenu.GoToMainMenu += () => { currentState = GameState.MainMenu; };
+            // Simplified state transition logic using helper methods
+            mainMenu.StartGame += () => ChangeState(GameState.Playing, true);
+            mainMenu.OpenSettings += () => PushState(GameState.Settings);
+            mainMenu.ExitGame += () => PopState();
+            settingsMenu.Back += () => PopState();
+            pauseMenu.ResumeGame += () => PopState();
+            pauseMenu.OpenSettings += () => PushState(GameState.Settings);
+            pauseMenu.GoToMainMenu += () => ChangeState(GameState.MainMenu);
 
+            PushState(GameState.MainMenu);
             SetupLevel(true);
 
-            while (!Raylib.WindowShouldClose() && currentState != GameState.Quit)
+            while (!Raylib.WindowShouldClose() && gameStates.Count > 0)
             {
                 if (Raylib.IsKeyPressed(KeyboardKey.F3))
                 {
@@ -87,6 +87,7 @@ namespace Asteroids
 
                 Raylib.DrawTexturePro(backgroundTexture, new Rectangle(0, 0, backgroundTexture.Width, backgroundTexture.Height), new Rectangle(0, 0, screenWidth, screenHeight), Vector2.Zero, 0, Color.White);
 
+                GameState currentState = gameStates.Peek();
                 switch (currentState)
                 {
                     case GameState.MainMenu:
@@ -117,6 +118,48 @@ namespace Asteroids
             Raylib.CloseWindow();
         }
 
+        #region State Management
+
+        /// <summary>
+        /// Pushes a new state onto the game state stack.
+        /// </summary>
+        /// <param name="state">The new state to add.</param>
+        static void PushState(GameState state)
+        {
+            gameStates.Push(state);
+        }
+
+        /// <summary>
+        /// Pops the current state from the game state stack.
+        /// </summary>
+        static void PopState()
+        {
+            if (gameStates.Count > 0)
+            {
+                gameStates.Pop();
+            }
+        }
+
+        /// <summary>
+        /// Clears the current state stack and sets a new root state.
+        /// </summary>
+        /// <param name="state">The new root state.</param>
+        /// <param name="isNewGame">Indicates if a new game should be set up.</param>
+        static void ChangeState(GameState state, bool isNewGame = false)
+        {
+            while (gameStates.Count > 0)
+            {
+                gameStates.Pop();
+            }
+            gameStates.Push(state);
+            if (isNewGame)
+            {
+                SetupLevel(true);
+            }
+        }
+
+        #endregion
+
         /// <summary>
         /// Updates the game logic while in the 'Playing' state.
         /// </summary>
@@ -124,7 +167,7 @@ namespace Asteroids
         {
             if (Raylib.IsKeyPressed(KeyboardKey.P) || Raylib.IsKeyPressed(KeyboardKey.Escape))
             {
-                currentState = GameState.Paused;
+                PushState(GameState.Paused);
                 return;
             }
 
@@ -138,7 +181,7 @@ namespace Asteroids
             foreach (var asteroid in asteroids) asteroid.Update();
 
             CheckPlayerCollisions();
-            if (currentState == GameState.GameOver) return;
+            if (gameStates.Peek() == GameState.GameOver) return;
 
             CheckBulletCollisions();
 
@@ -197,12 +240,12 @@ namespace Asteroids
         {
             if (Raylib.IsKeyPressed(KeyboardKey.R))
             {
+                PopState(); // Pop GameOver, return to Playing
                 SetupLevel(true);
-                currentState = GameState.Playing;
             }
             else if (Raylib.IsKeyPressed(KeyboardKey.M))
             {
-                currentState = GameState.MainMenu;
+                ChangeState(GameState.MainMenu);
             }
         }
 
@@ -333,7 +376,7 @@ namespace Asteroids
             {
                 if (player.CollidesWith(asteroids[i]))
                 {
-                    currentState = GameState.GameOver;
+                    PushState(GameState.GameOver);
                     return;
                 }
             }
@@ -341,7 +384,7 @@ namespace Asteroids
             {
                 if (player.CollidesWith(enemyBullets[i]))
                 {
-                    currentState = GameState.GameOver;
+                    PushState(GameState.GameOver);
                     return;
                 }
             }
