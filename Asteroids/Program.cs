@@ -36,8 +36,10 @@ namespace Asteroids
         public static int level = 1;
         public static Random random = new Random();
         public static GameState currentState = GameState.MainMenu;
+        public static GameState previousState;
         public static MainMenu mainMenu;
         public static SettingsMenu settingsMenu;
+        public static PauseMenu pauseMenu;
 
         public static Player player;
         public static List<Asteroid> asteroids;
@@ -61,11 +63,15 @@ namespace Asteroids
 
             mainMenu = new MainMenu();
             settingsMenu = new SettingsMenu();
+            pauseMenu = new PauseMenu();
 
             mainMenu.StartGame += () => { SetupLevel(true); currentState = GameState.Playing; };
-            mainMenu.OpenSettings += () => { currentState = GameState.Settings; };
+            mainMenu.OpenSettings += () => { previousState = currentState; currentState = GameState.Settings; };
             mainMenu.ExitGame += () => { currentState = GameState.Quit; };
-            settingsMenu.Back += () => { currentState = GameState.MainMenu; };
+            settingsMenu.Back += () => { currentState = previousState; };
+            pauseMenu.ResumeGame += () => { currentState = GameState.Playing; };
+            pauseMenu.OpenSettings += () => { previousState = currentState; currentState = GameState.Settings; };
+            pauseMenu.GoToMainMenu += () => { currentState = GameState.MainMenu; };
 
             SetupLevel(true);
 
@@ -97,7 +103,6 @@ namespace Asteroids
                         break;
                     case GameState.Paused:
                         DrawPausedState();
-                        HandlePausedInput();
                         break;
                     case GameState.GameOver:
                         DrawGameOverState();
@@ -169,24 +174,8 @@ namespace Asteroids
         {
             DrawPlayingState();
             Raylib.DrawRectangle(0, 0, screenWidth, screenHeight, new Color(0, 0, 0, 150));
-            DrawCenteredText("PAUSED", screenHeight / 2 - 60, 50, Color.Yellow);
-            DrawCenteredText("Press 'P' to Resume", screenHeight / 2, 30, Color.White);
-            DrawCenteredText("Press 'M' for Main Menu", screenHeight / 2 + 40, 30, Color.White);
-        }
-
-        /// <summary>
-        /// Handles user input when the game is paused.
-        /// </summary>
-        static void HandlePausedInput()
-        {
-            if (Raylib.IsKeyPressed(KeyboardKey.P) || Raylib.IsKeyPressed(KeyboardKey.Escape))
-            {
-                currentState = GameState.Playing;
-            }
-            else if (Raylib.IsKeyPressed(KeyboardKey.M))
-            {
-                currentState = GameState.MainMenu;
-            }
+            pauseMenu.Update();
+            pauseMenu.Draw(screenWidth, screenHeight);
         }
 
         /// <summary>
