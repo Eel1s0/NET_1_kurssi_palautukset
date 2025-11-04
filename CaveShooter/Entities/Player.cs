@@ -175,7 +175,7 @@ namespace CaveShooter.Entities
             if (CurrentWeapon.CanFire)
             {
                 Vector2 firePosition = Ship.Position + Ship.GetForwardDirection() * Ship.Radius;
-                CurrentWeapon.Fire(firePosition, Ship.GetForwardDirection(), bulletManager);
+                CurrentWeapon.Fire(firePosition, Ship.GetForwardDirection(), bulletManager, PlayerId);
             }
         }
 

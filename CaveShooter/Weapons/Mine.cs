@@ -15,13 +15,13 @@ namespace CaveShooter.Weapons
         public float Cooldown => COOLDOWN_TIME;
         public bool CanFire => cooldownTimer <= 0;
 
-        public void Fire(Vector2 position, Vector2 direction, BulletManager bulletManager)
+        public void Fire(Vector2 position, Vector2 direction, BulletManager bulletManager, int ownerId)
         {
             if (!CanFire) return;
 
             // Mines are stationary - velocity is zero
             Vector2 velocity = Vector2.Zero;
-            StandardBullet mine = new StandardBullet(position, velocity, BULLET_RADIUS, Color.Orange, -1);
+            StandardBullet mine = new StandardBullet(position, velocity, BULLET_RADIUS, Color.Orange, ownerId);
             bulletManager.AddBullet(mine);
 
             cooldownTimer = COOLDOWN_TIME;

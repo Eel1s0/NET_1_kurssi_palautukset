@@ -13,7 +13,8 @@ namespace CaveShooter.Weapons
         /// <param name="position">The position to fire from.</param>
         /// <param name="direction">The direction to fire in.</param>
         /// <param name="bulletManager">The bullet manager to add projectiles to.</param>
-        void Fire(Vector2 position, Vector2 direction, BulletManager bulletManager);
+        /// <param name="ownerId">The ID of the player firing the weapon.</param>
+        void Fire(Vector2 position, Vector2 direction, BulletManager bulletManager, int ownerId);
 
         /// <summary>
         /// Gets the cooldown time between shots in seconds.
