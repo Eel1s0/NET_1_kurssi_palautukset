@@ -1,8 +1,9 @@
-﻿using System;
+﻿using System.Numerics;
 
-public class Class1
+namespace CaveShooter
 {
-	public Class1()
-	{
-	}
+    public interface IWeapon
+    {
+        void Shoot(Vector2 startPosition, Vector2 direction, BulletManager bulletManager);
+    }
 }
