@@ -7,28 +7,55 @@ using System;
 
 namespace CaveShooter
 {
+    /// <summary>
+    /// Main menu UI with options to start game, open settings, or exit.
+    /// </summary>
     public class MainMenu
     {
-        private MenuCreator mc;
+        #region Events
+
         public event Action? StartGame;
         public event Action? OpenSettings;
         public event Action? ExitGame;
 
+        #endregion
+
+        #region Private Fields
+
+        private MenuCreator mc;
+
+        #endregion
+
+        #region Constructor
+
+        /// <summary>
+        /// Creates a new main menu centered on the screen.
+        /// </summary>
+        /// <param name="screenWidth">Screen width for centering.</param>
         public MainMenu(int screenWidth)
         {
-            // layout: centered menu
             mc = new MenuCreator(screenWidth / 2 - 150, 180, 36, 300);
         }
 
+        #endregion
+
+        #region Public Methods
+
+        /// <summary>
+        /// Updates menu state (reserved for future input handling).
+        /// </summary>
         public void Update()
         {
-            // nothing to do here for keyboard navigation — MenuCreator handles input as Draw is called,
-            // but keep Update for parity with the main loop
+            // MenuCreator handles input during Draw
         }
 
+        /// <summary>
+        /// Renders the main menu and handles button interactions.
+        /// </summary>
+        /// <param name="screenWidth">Screen width for layout.</param>
+        /// <param name="screenHeight">Screen height for layout.</param>
         public void Draw(int screenWidth, int screenHeight)
         {
-            // Recreate MenuCreator each frame with correct Y origin so layout stays consistent
             mc = new MenuCreator(screenWidth / 2 - 150, 180, 36, 300);
 
             mc.Label("Cave Shooter");
@@ -50,5 +77,7 @@ namespace CaveShooter
 
             mc.EndMenu();
         }
+
+        #endregion
     }
 }
