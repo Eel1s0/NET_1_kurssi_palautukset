@@ -1,5 +1,4 @@
-﻿using System;
-using System.Numerics;
+﻿using System.Numerics;
 using Raylib_cs;
 
 namespace CaveShooter
@@ -8,19 +7,24 @@ namespace CaveShooter
     {
         public Vector2 Position { get; private set; }
         private Vector2 velocity;
-        private const float Gravity = 50f; // pixels/s^2
-        private const float Thrust = 250f; // pixels/s^2
-        private const float Damping = 0.995f; // To simulate some air resistance
+        private const float Gravity = 80f;
+        private const float Thrust = 180f;
+        private const float Damping = 0.98f;
+        private const float CollisionBounce = -0.3f;
+
+        // Ship size - reduced from 15 to 4 for pixel art scale
+        private const float ShipSize = 4f;
+
+        public int Health { get; private set; } = 100;
 
         private IWeapon weapon;
         private Rectangle collisionRect;
 
-        // Cooldown fields for rapid fire
-        private float fireRate = 5f; // 5 bullets per second
+        private float fireRate = 5f;
         private float fireCooldown = 0f;
 
         private InputConfig inputConfig;
-        private float rotation = 0f; // Ship's rotation in degrees
+        private float rotation = 0f;
 
         public Ship(Vector2 startPosition, InputConfig config)
         {
@@ -28,75 +32,70 @@ namespace CaveShooter
             inputConfig = config;
             velocity = Vector2.Zero;
             weapon = new Basic();
-            collisionRect = new Rectangle(Position.X - 15, Position.Y - 15, 30, 30);
+            collisionRect = new Rectangle(Position.X - ShipSize, Position.Y - ShipSize, ShipSize * 2, ShipSize * 2);
+        }
+
+        public void TakeDamage(int amount)
+        {
+            Health -= amount;
+            if (Health < 0) Health = 0;
         }
 
         public void Update(float deltaTime, BulletManager bulletManager, Map map)
         {
-            // Update fire cooldown
             if (fireCooldown > 0)
             {
                 fireCooldown -= deltaTime;
             }
 
-            // Rotation logic
-            if (Raylib.IsKeyDown(inputConfig.Left)) rotation -= 180f * deltaTime;
-            if (Raylib.IsKeyDown(inputConfig.Right)) rotation += 180f * deltaTime;
+            if (Raylib.IsKeyDown(inputConfig.Left)) rotation -= 120f * deltaTime;
+            if (Raylib.IsKeyDown(inputConfig.Right)) rotation += 120f * deltaTime;
 
-            // Physics-based movement
-            Vector2 acceleration = new Vector2(0, Gravity); // Apply gravity
-            float rotationRad = (float)(Math.PI / 180f) * (rotation - 90); // Adjust for triangle orientation
+            Vector2 acceleration = new Vector2(0, Gravity);
+            float rotationRad = (float)(Math.PI / 180f) * (rotation - 90);
 
             if (Raylib.IsKeyDown(inputConfig.Up))
             {
-                // Apply thrust in the direction the ship is facing
                 acceleration.X += (float)Math.Cos(rotationRad) * Thrust;
                 acceleration.Y += (float)Math.Sin(rotationRad) * Thrust;
             }
 
-            // Update velocity and apply damping
             velocity += acceleration * deltaTime;
             velocity *= Damping;
 
-            // --- Collision Detection and Response ---
-            // We'll check X and Y movement separately to allow sliding.
-            Vector2 newPosition = Position + velocity * deltaTime;
-            Vector2 finalPosition = Position;
+            Vector2 newPosition = Position;
 
-            // Check X-axis collision
-            Rectangle futureRectX = new Rectangle(newPosition.X - 15, Position.Y - 15, 30, 30);
-            if (!map.CheckCollision(futureRectX))
+            // Check X movement with smaller collision box
+            float newX = Position.X + velocity.X * deltaTime;
+            Rectangle xRect = new Rectangle(newX - ShipSize, Position.Y - ShipSize, ShipSize * 2, ShipSize * 2);
+            if (map.CheckCollision(xRect))
             {
-                finalPosition.X = newPosition.X;
+                velocity.X *= CollisionBounce;
             }
             else
             {
-                // Collided horizontally, stop horizontal movement
-                velocity.X = 0;
+                newPosition.X = newX;
             }
 
-            // Check Y-axis collision
-            Rectangle futureRectY = new Rectangle(finalPosition.X - 15, newPosition.Y - 15, 30, 30);
-            if (!map.CheckCollision(futureRectY))
+            // Check Y movement with smaller collision box
+            float newY = Position.Y + velocity.Y * deltaTime;
+            Rectangle yRect = new Rectangle(newPosition.X - ShipSize, newY - ShipSize, ShipSize * 2, ShipSize * 2);
+            if (map.CheckCollision(yRect))
             {
-                finalPosition.Y = newPosition.Y;
+                velocity.Y *= CollisionBounce;
             }
             else
             {
-                // Collided vertically, stop vertical movement
-                velocity.Y = 0;
+                newPosition.Y = newY;
             }
 
-            Position = finalPosition;
-            collisionRect.X = Position.X - 15;
-            collisionRect.Y = Position.Y - 15;
+            Position = newPosition;
+            collisionRect.X = Position.X - ShipSize;
+            collisionRect.Y = Position.Y - ShipSize;
 
-            // Shooting logic
             if (Raylib.IsKeyDown(inputConfig.Shoot) && fireCooldown <= 0)
             {
-                // Reset cooldown
                 fireCooldown = 1f / fireRate;
-
                 Vector2 direction = new Vector2((float)Math.Cos(rotationRad), (float)Math.Sin(rotationRad));
                 weapon.Shoot(Position, direction, bulletManager);
             }
@@ -104,22 +103,19 @@ namespace CaveShooter
 
         public void Draw()
         {
-            // Define the triangle points relative to the origin
-            Vector2 v1 = new Vector2(0, -15); // Top point
-            Vector2 v2 = new Vector2(-15, 15); // Bottom-left
-            Vector2 v3 = new Vector2(15, 15); // Bottom-right
+            // Smaller triangle for pixel art scale
+            Vector2 v1 = new Vector2(0, -ShipSize);
+            Vector2 v2 = new Vector2(-ShipSize, ShipSize);
+            Vector2 v3 = new Vector2(ShipSize, ShipSize);
 
-            // Convert rotation to radians
             float rotationRad = (float)(Math.PI / 180f) * rotation;
             float cosR = (float)Math.Cos(rotationRad);
             float sinR = (float)Math.Sin(rotationRad);
 
-            // Rotate points around the origin
             Vector2 rv1 = new Vector2(v1.X * cosR - v1.Y * sinR, v1.X * sinR + v1.Y * cosR);
             Vector2 rv2 = new Vector2(v2.X * cosR - v2.Y * sinR, v2.X * sinR + v2.Y * cosR);
             Vector2 rv3 = new Vector2(v3.X * cosR - v3.Y * sinR, v3.X * sinR + v3.Y * cosR);
 
-            // Translate points to the ship's position and draw
             Raylib.DrawTriangle(
                 Position + rv1,
                 Position + rv2,

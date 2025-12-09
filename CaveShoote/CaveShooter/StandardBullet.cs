@@ -1,6 +1,6 @@
-﻿using System.Numerics;
-using Raylib_cs;
+﻿using Raylib_cs;
 using System.Collections.Generic;
+using System.Numerics;
 
 namespace CaveShooter
 {
@@ -9,7 +9,7 @@ namespace CaveShooter
         public Vector2 Position { get; private set; }
         public Vector2 Velocity { get; private set; }
         public bool IsActive { get; set; } = true;
-        private float radius = 5f;
+        private float radius = 1.5f;
         private Rectangle collisionRect;
 
         public StandardBullet(Vector2 position, Vector2 direction, float speed)
@@ -29,7 +29,7 @@ namespace CaveShooter
             if (map.CheckCollision(collisionRect, out List<Rectangle> collidedWalls))
             {
                 IsActive = false;
-                map.DestroyWalls(collidedWalls); // Tell the map to destroy the walls
+                map.DestroyWalls(collidedWalls);
             }
         }
 

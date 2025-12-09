@@ -6,76 +6,69 @@ namespace CaveShooter
 {
     public class Map
     {
-        private string[] layout = new string[]
-        {
-            "11111111111111111111111111111111",
-            "10000000000000000000000000000001",
-            "10000000000000000000000000000001",
-            "10000011111000000000011111000001",
-            "10000000000000000000000000000001",
-            "10000000000000000000000000000001",
-            "11111000001111111111100000111111",
-            "10000000000000000000000000000001",
-            "10000000000000000000000000000001",
-            "10000011111000000000011111000001",
-            "10000000000000000000000000000001",
-            "10000000000000000000000000000001",
-            "11111111111111111111111111111111"
-        };
-
-        private int tileSize = 40;
+        private int tileSize = 8;
         private List<Rectangle> wallRects = new List<Rectangle>();
-        private RenderTexture2D mapTexture;
+        private Texture2D mapTexture;
 
         public int Width { get; private set; }
         public int Height { get; private set; }
 
-        public Map()
+        public Map(string mapImagePath)
         {
-            Width = layout[0].Length * tileSize;
-            Height = layout.Length * tileSize;
+            // Load the PNG as a texture
+            mapTexture = Raylib.LoadTexture(mapImagePath);
 
-            for (int y = 0; y < layout.Length; y++)
+            Width = mapTexture.Width;
+            Height = mapTexture.Height;
+
+            // Load collision data from the image (black pixels = walls)
+            Image mapImage = Raylib.LoadImage(mapImagePath);
+            LoadCollisionFromImage(mapImage);
+            Raylib.UnloadImage(mapImage);
+        }
+
+        private void LoadCollisionFromImage(Image image)
+        {
+            // Sample the image at tile intervals to build collision rectangles
+            int tilesX = image.Width / tileSize;
+            int tilesY = image.Height / tileSize;
+
+            for (int y = 0; y < tilesY; y++)
             {
-                for (int x = 0; x < layout[y].Length; x++)
+                for (int x = 0; x < tilesX; x++)
                 {
-                    if (layout[y][x] == '1')
+                    // Sample the center of each tile
+                    int sampleX = x * tileSize + tileSize / 2;
+                    int sampleY = y * tileSize + tileSize / 2;
+
+                    Color pixelColor = Raylib.GetImageColor(image, sampleX, sampleY);
+
+                    // INVERTED: Treat NON-dark pixels as walls (the gray/colored cave walls)
+                    // Black areas (R < 50, G < 50, B < 50) are now passable
+                    if (!(pixelColor.R < 50 && pixelColor.G < 50 && pixelColor.B < 50))
                     {
                         wallRects.Add(new Rectangle(x * tileSize, y * tileSize, tileSize, tileSize));
                     }
                 }
             }
-
-            // Create a render texture to draw the map on once
-            mapTexture = Raylib.LoadRenderTexture(Width, Height);
-            RedrawMapTexture();
-        }
-
-        private void RedrawMapTexture()
-        {
-            Raylib.BeginTextureMode(mapTexture);
-            Raylib.ClearBackground(Color.Black); // Ensure texture background is clear
-            foreach (var wall in wallRects)
-            {
-                Raylib.DrawRectangleRec(wall, Color.Gray);
-            }
-            Raylib.EndTextureMode();
         }
 
         public void Unload()
         {
-            Raylib.UnloadRenderTexture(mapTexture);
+            Raylib.UnloadTexture(mapTexture);
         }
 
-        public void Draw()
+        public void Draw(bool showCollision = false)
         {
-            // Draw the pre-rendered map texture. Note that the texture is flipped vertically.
-            Raylib.DrawTextureRec(
-                mapTexture.Texture,
-                new Rectangle(0, 0, Width, -Height), // Negative height to flip the texture
-                Vector2.Zero,
-                Color.White
-            );
+            Raylib.DrawTexture(mapTexture, 0, 0, Color.White);
+
+            if (showCollision)
+            {
+                foreach (var wall in wallRects)
+                {
+                    Raylib.DrawRectangleRec(wall, new Color(255, 0, 0, 100));
+                }
+            }
         }
 
         public bool CheckCollision(Rectangle rect, out List<Rectangle> collidedWalls)
@@ -93,7 +86,6 @@ namespace CaveShooter
             return hasCollided;
         }
 
-        // Overload for checks where we don't care which walls were hit
         public bool CheckCollision(Rectangle rect)
         {
             return CheckCollision(rect, out _);
@@ -101,10 +93,7 @@ namespace CaveShooter
 
         public void DestroyWalls(List<Rectangle> wallsToDestroy)
         {
-            if (wallsToDestroy.Count == 0) return;
-
             wallRects.RemoveAll(wall => wallsToDestroy.Contains(wall));
-            RedrawMapTexture();
         }
     }
 }

@@ -13,7 +13,7 @@ namespace CaveShooter
             {
                 Offset = new Vector2(viewWidth / 2f, viewHeight / 2f),
                 Rotation = 0f,
-                Zoom = 1.0f
+                Zoom = 2.0f  // Increased zoom to make the map appear larger
             };
         }
 

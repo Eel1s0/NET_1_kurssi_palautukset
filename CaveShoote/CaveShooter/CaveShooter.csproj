@@ -15,4 +15,10 @@
     <ProjectReference Include="..\..\..\RayGuiCreator\RayGuiCreator\RayGuiCreator.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Update="picomap_cave.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
 </Project>
