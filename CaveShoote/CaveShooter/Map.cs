@@ -26,6 +26,7 @@ namespace CaveShooter
 
         private List<Rectangle> wallRects = new List<Rectangle>();
         private Texture2D mapTexture;
+        private Image mapImage;
 
         #endregion
 
@@ -37,13 +38,12 @@ namespace CaveShooter
         /// <param name="mapImagePath">Path to the map image file.</param>
         public Map(string mapImagePath)
         {
-            mapTexture = Raylib.LoadTexture(mapImagePath);
+            mapImage = Raylib.LoadImage(mapImagePath);
+            mapTexture = Raylib.LoadTextureFromImage(mapImage);
             Width = mapTexture.Width;
             Height = mapTexture.Height;
 
-            Image mapImage = Raylib.LoadImage(mapImagePath);
             LoadCollisionFromImage(mapImage);
-            Raylib.UnloadImage(mapImage);
         }
 
         #endregion
@@ -51,11 +51,12 @@ namespace CaveShooter
         #region Public Methods
 
         /// <summary>
-        /// Unloads the map texture from memory.
+        /// Unloads the map texture and image from memory.
         /// </summary>
         public void Unload()
         {
             Raylib.UnloadTexture(mapTexture);
+            Raylib.UnloadImage(mapImage);
         }
 
         /// <summary>
@@ -109,12 +110,25 @@ namespace CaveShooter
         }
 
         /// <summary>
-        /// Removes specified walls from the collision map (destructible terrain).
+        /// Removes specified walls from the collision map and updates the texture.
         /// </summary>
         /// <param name="wallsToDestroy">Walls to remove.</param>
         public void DestroyWalls(List<Rectangle> wallsToDestroy)
         {
+            foreach (var wall in wallsToDestroy)
+            {
+                // Draw black (passable) color over destroyed wall area in the image
+                Raylib.ImageDrawRectangle(ref mapImage, (int)wall.X, (int)wall.Y,
+                    (int)wall.Width, (int)wall.Height, Color.Black);
+            }
+
             wallRects.RemoveAll(wall => wallsToDestroy.Contains(wall));
+
+            // Update the texture with the modified image
+            unsafe
+            {
+                Raylib.UpdateTexture(mapTexture, mapImage.Data);
+            }
         }
 
         #endregion
